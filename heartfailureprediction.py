@@ -1,36 +1,41 @@
-
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, KBinsDiscretizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, roc_auc_score, roc_curve
+from imblearn.over_sampling import SMOTE
 import joblib
 
 # Load the dataset
 data_path = '/kaggle/input/heart-failure-clinical-data/heart_failure_clinical_records_dataset.csv'
 data = pd.read_csv(data_path)
 
-# Basic dataset exploration
-print("Dataset Info:")
-data.info()
-print("\nStatistical Summary:")
-print(data.describe())
+# Handle missing values (if any)
+if data.isnull().sum().sum() > 0:
+    data.fillna(data.median(), inplace=True)
 
-# Visualize correlations between features
-plt.figure(figsize=(10, 8))
-sns.heatmap(data.corr(), cmap="coolwarm", annot=False)
-plt.title("Feature Correlation Heatmap")
-plt.show()
+# feature Enginneering
+data['Chronic_Condition_Score'] = data[['anaemia', 'diabetes', 'high_blood_pressure']].sum(axis=1)
 
-# Separate features and target variable
+age_bins = KBinsDiscretizer(n_bins=5, encode='ordinal', strategy='quantile')
+data['Age_Binned'] = age_bins.fit_transform(data[['age']])
+
+data['EF_Creatinine_Interaction'] = data['ejection_fraction'] * data['serum_creatinine']
+
+data.drop(columns=['age'], inplace=True)
+
 X = data.drop(columns=['DEATH_EVENT'])
 y = data['DEATH_EVENT']
 
+# Handle class imbalance using SMOTE
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X, y)
+
 # Split dataset into training and test sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, stratify=y_resampled, random_state=42)
 
 # Scale feature data
 scaler = StandardScaler()
@@ -118,3 +123,4 @@ submission_df = pd.DataFrame({
     'DEATH_EVENT': y_pred_optimized
 })
 submission_df.to_csv('submission.csv', index=False)
+
